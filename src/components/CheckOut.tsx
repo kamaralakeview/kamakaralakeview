@@ -1,49 +1,77 @@
 import React, { useState } from 'react';
-import { LogOut, Building2, Calendar, Users } from 'lucide-react';
+import { LogOut, Building2, Calendar, Users, Loader } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Booking, StayLog } from '../types';
 
 export function CheckOut() {
-  const { bookings, setBookings, rooms, setRooms, stayLogs, setStayLogs } = useApp();
+  const { 
+    bookings, 
+    rooms, 
+    stayLogs, 
+    setStayLogs, 
+    loading, 
+    error, 
+    updateBooking, 
+    updateRoom 
+  } = useApp();
+  
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const checkedInBookings = bookings.filter(booking => booking.status === 'Checked In');
 
-  const handleCheckOut = () => {
+  const handleCheckOut = async () => {
     if (!selectedBooking) return;
 
-    // Create stay log entry
-    const stayLog: StayLog = {
-      id: Date.now().toString(),
-      guestId: selectedBooking.guestId,
-      guest: selectedBooking.guest,
-      roomId: selectedBooking.roomId,
-      room: selectedBooking.room,
-      checkInDate: selectedBooking.checkInDate,
-      checkOutDate: selectedBooking.checkOutDate,
-      actualCheckIn: selectedBooking.createdAt,
-      actualCheckOut: new Date().toISOString()
-    };
+    setSubmitting(true);
+    try {
+      // Create stay log entry
+      const stayLog: StayLog = {
+        id: Date.now().toString(),
+        guestId: selectedBooking.guestId,
+        guest: selectedBooking.guest,
+        roomId: selectedBooking.roomId,
+        room: selectedBooking.room,
+        checkInDate: selectedBooking.checkInDate,
+        checkOutDate: selectedBooking.checkOutDate,
+        actualCheckIn: selectedBooking.createdAt,
+        actualCheckOut: new Date().toISOString()
+      };
 
-    setStayLogs(prev => [...prev, stayLog]);
+      setStayLogs(prev => [...prev, stayLog]);
 
-    // Update booking status
-    setBookings(prev => prev.map(booking => 
-      booking.id === selectedBooking.id 
-        ? { ...booking, status: 'Checked Out' as Booking['status'] }
-        : booking
-    ));
+      // Update booking status
+      await updateBooking(selectedBooking.id, { status: 'Checked Out' });
 
-    // Update room status to Available
-    setRooms(prev => prev.map(room => 
-      room.id === selectedBooking.roomId 
-        ? { ...room, status: 'Available' as const }
-        : room
-    ));
+      // Update room status to Available
+      await updateRoom(selectedBooking.roomId, { status: 'Available' });
 
-    setSelectedBooking(null);
-    alert('Guest checked out successfully!');
+      setSelectedBooking(null);
+      alert('Guest checked out successfully!');
+    } catch (err) {
+      console.error('Error during check-out:', err);
+      alert('Error during check-out. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader className="w-8 h-8 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-600">Loading check-out data...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-800">Error loading check-out data: {error}</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -186,10 +214,20 @@ export function CheckOut() {
 
               <button
                 onClick={handleCheckOut}
-                className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center space-x-2"
+                disabled={submitting}
+                className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center space-x-2"
               >
-                <LogOut className="w-5 h-5" />
-                <span>Confirm Check-Out</span>
+                {submitting ? (
+                  <>
+                    <Loader className="w-5 h-5 animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="w-5 h-5" />
+                    <span>Confirm Check-Out</span>
+                  </>
+                )}
               </button>
             </div>
           ) : (

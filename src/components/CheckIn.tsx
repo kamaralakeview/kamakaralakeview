@@ -1,11 +1,22 @@
 import React, { useState } from 'react';
-import { UserCheck, Calendar, Users, Phone, Mail } from 'lucide-react';
+import { UserCheck, Calendar, Users, Phone, Mail, Loader } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Booking } from '../types';
 
 export function CheckIn() {
-  const { bookings, setBookings, rooms, setRooms, guests, setGuests } = useApp();
+  const { 
+    bookings, 
+    rooms, 
+    guests, 
+    loading, 
+    error, 
+    updateBooking, 
+    updateRoom, 
+    updateGuest 
+  } = useApp();
+  
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [checkInData, setCheckInData] = useState({
     idType: '',
     idNumber: '',
@@ -14,45 +25,57 @@ export function CheckIn() {
 
   const confirmedBookings = bookings.filter(booking => booking.status === 'Confirmed');
 
-  const handleCheckIn = () => {
+  const handleCheckIn = async () => {
     if (!selectedBooking) return;
 
-    // Update guest information
-    setGuests(prev => prev.map(guest => 
-      guest.id === selectedBooking.guestId 
-        ? { 
-            ...guest, 
-            idType: checkInData.idType,
-            idNumber: checkInData.idNumber,
-            nationality: checkInData.nationality
-          }
-        : guest
-    ));
+    setSubmitting(true);
+    try {
+      // Update guest information
+      await updateGuest(selectedBooking.guestId, {
+        idType: checkInData.idType,
+        idNumber: checkInData.idNumber,
+        nationality: checkInData.nationality
+      });
 
-    // Update booking status
-    setBookings(prev => prev.map(booking => 
-      booking.id === selectedBooking.id 
-        ? { ...booking, status: 'Checked In' as Booking['status'] }
-        : booking
-    ));
+      // Update booking status
+      await updateBooking(selectedBooking.id, { status: 'Checked In' });
 
-    // Update room status
-    setRooms(prev => prev.map(room => 
-      room.id === selectedBooking.roomId 
-        ? { ...room, status: 'Occupied' as const }
-        : room
-    ));
+      // Update room status
+      await updateRoom(selectedBooking.roomId, { status: 'Occupied' });
 
-    // Reset form
-    setSelectedBooking(null);
-    setCheckInData({
-      idType: '',
-      idNumber: '',
-      nationality: ''
-    });
+      // Reset form
+      setSelectedBooking(null);
+      setCheckInData({
+        idType: '',
+        idNumber: '',
+        nationality: ''
+      });
 
-    alert('Guest checked in successfully!');
+      alert('Guest checked in successfully!');
+    } catch (err) {
+      console.error('Error during check-in:', err);
+      alert('Error during check-in. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader className="w-8 h-8 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-600">Loading check-in data...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-800">Error loading check-in data: {error}</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -207,11 +230,20 @@ export function CheckIn() {
 
                 <button
                   onClick={handleCheckIn}
-                  disabled={!checkInData.idType || !checkInData.idNumber || !checkInData.nationality}
+                  disabled={!checkInData.idType || !checkInData.idNumber || !checkInData.nationality || submitting}
                   className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 px-4 rounded-md transition-colors flex items-center justify-center space-x-2"
                 >
-                  <UserCheck className="w-5 h-5" />
-                  <span>Confirm Check-In</span>
+                  {submitting ? (
+                    <>
+                      <Loader className="w-5 h-5 animate-spin" />
+                      <span>Processing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="w-5 h-5" />
+                      <span>Confirm Check-In</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

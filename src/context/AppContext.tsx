@@ -21,8 +21,9 @@ interface AppContextType {
   updateRoom: (roomId: string, updates: Partial<Room>) => Promise<Room>;
   deleteRoom: (roomId: string) => Promise<void>;
   addGuest: (guestData: Omit<Guest, 'id'>) => Promise<Guest>;
+  updateGuest: (guestId: string, updates: Partial<Guest>) => Promise<Guest>;
   addBooking: (bookingData: Omit<Booking, 'id' | 'createdAt'>) => Promise<Booking>;
-  updateBooking: (bookingId: string, updates: Partial<Booking>) => Promise<void>;
+  updateBooking: (bookingId: string, updates: Partial<Booking>) => Promise<Booking>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -46,6 +47,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateRoom,
     deleteRoom,
     addGuest,
+    updateGuest,
     addBooking,
     updateBooking
   } = useSupabaseData();
@@ -89,6 +91,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateRoom,
       deleteRoom,
       addGuest,
+      updateGuest,
       addBooking,
       updateBooking
     }}>

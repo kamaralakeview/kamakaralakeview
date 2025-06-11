@@ -24,20 +24,37 @@ const transformGuest = (dbGuest: DatabaseGuest): Guest => ({
   idNumber: dbGuest.id_number || undefined
 });
 
-const transformBooking = (dbBooking: DatabaseBooking, room: Room, guest: Guest): Booking => ({
-  id: dbBooking.id.toString(),
-  guestId: guest.id,
-  guest,
-  roomId: room.id,
-  room,
-  checkInDate: dbBooking.check_in_date || '',
-  checkOutDate: dbBooking.check_out_date || '',
-  numberOfGuests: dbBooking.number_of_guests || 1,
-  status: dbBooking.status === 'booked' ? 'Confirmed' :
-          dbBooking.status === 'checked_in' ? 'Checked In' :
-          dbBooking.status === 'checked_out' ? 'Checked Out' : 'Cancelled',
-  createdAt: dbBooking.created_at
-});
+const transformBooking = (dbBooking: DatabaseBooking, rooms: Room[], guests: Guest[]): Booking => {
+  const room = rooms.find(r => r.id === dbBooking.room_id?.toString()) || {
+    id: dbBooking.room_id?.toString() || '0',
+    number: 'Unknown',
+    type: 'Standard' as const,
+    status: 'Available' as const,
+    price: 120
+  };
+
+  const guest = guests.find(g => g.fullName === dbBooking.guest_name) || {
+    id: '0',
+    fullName: dbBooking.guest_name || 'Unknown Guest',
+    phone: dbBooking.guest_phone || '',
+    email: dbBooking.guest_email || undefined
+  };
+
+  return {
+    id: dbBooking.id.toString(),
+    guestId: guest.id,
+    guest,
+    roomId: room.id,
+    room,
+    checkInDate: dbBooking.check_in_date || '',
+    checkOutDate: dbBooking.check_out_date || '',
+    numberOfGuests: dbBooking.number_of_guests || 1,
+    status: dbBooking.status === 'booked' ? 'Confirmed' :
+            dbBooking.status === 'checked_in' ? 'Checked In' :
+            dbBooking.status === 'checked_out' ? 'Checked Out' : 'Cancelled',
+    createdAt: dbBooking.created_at
+  };
+};
 
 export function useSupabaseData() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -81,32 +98,9 @@ export function useSupabaseData() {
       const transformedGuests = guestsData?.map(transformGuest) || [];
       
       // Transform bookings with room and guest data
-      const transformedBookings = bookingsData?.map(booking => {
-        const room = transformedRooms.find(r => r.id === booking.room_id?.toString());
-        const guest = transformedGuests.find(g => g.fullName === booking.guest_name);
-        
-        if (!room || !guest) {
-          // Create placeholder data if not found
-          const placeholderRoom: Room = {
-            id: booking.room_id?.toString() || '0',
-            number: 'Unknown',
-            type: 'Standard',
-            status: 'Available',
-            price: 120
-          };
-          
-          const placeholderGuest: Guest = {
-            id: '0',
-            fullName: booking.guest_name || 'Unknown Guest',
-            phone: booking.guest_phone || '',
-            email: booking.guest_email || undefined
-          };
-          
-          return transformBooking(booking, room || placeholderRoom, guest || placeholderGuest);
-        }
-        
-        return transformBooking(booking, room, guest);
-      }) || [];
+      const transformedBookings = bookingsData?.map(booking => 
+        transformBooking(booking, transformedRooms, transformedGuests)
+      ) || [];
 
       setRooms(transformedRooms);
       setGuests(transformedGuests);
@@ -189,6 +183,22 @@ export function useSupabaseData() {
   // Guest operations
   const addGuest = async (guestData: Omit<Guest, 'id'>) => {
     try {
+      // Check if guest already exists by phone number
+      const { data: existingGuest, error: checkError } = await supabase
+        .from('guests')
+        .select('*')
+        .eq('phone_number', guestData.phone)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      if (existingGuest) {
+        // Return existing guest
+        return transformGuest(existingGuest);
+      }
+
       const [firstName, ...lastNameParts] = guestData.fullName.split(' ');
       const lastName = lastNameParts.join(' ');
 
@@ -217,6 +227,38 @@ export function useSupabaseData() {
     }
   };
 
+  const updateGuest = async (guestId: string, updates: Partial<Guest>) => {
+    try {
+      const dbUpdates: any = {};
+      if (updates.fullName) {
+        const [firstName, ...lastNameParts] = updates.fullName.split(' ');
+        dbUpdates.first_name = firstName;
+        dbUpdates.last_name = lastNameParts.join(' ') || null;
+      }
+      if (updates.email !== undefined) dbUpdates.email = updates.email;
+      if (updates.phone) dbUpdates.phone_number = updates.phone;
+      if (updates.nationality !== undefined) dbUpdates.nationality = updates.nationality;
+      if (updates.idType !== undefined) dbUpdates.id_type = updates.idType;
+      if (updates.idNumber !== undefined) dbUpdates.id_number = updates.idNumber;
+
+      const { data, error } = await supabase
+        .from('guests')
+        .update(dbUpdates)
+        .eq('id', parseInt(guestId))
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      const updatedGuest = transformGuest(data);
+      setGuests(prev => prev.map(guest => guest.id === guestId ? updatedGuest : guest));
+      return updatedGuest;
+    } catch (err) {
+      console.error('Error updating guest:', err);
+      throw err;
+    }
+  };
+
   // Booking operations
   const addBooking = async (bookingData: Omit<Booking, 'id' | 'createdAt'>) => {
     try {
@@ -237,7 +279,7 @@ export function useSupabaseData() {
 
       if (error) throw error;
       
-      const newBooking = transformBooking(data, bookingData.room, bookingData.guest);
+      const newBooking = transformBooking(data, rooms, guests);
       setBookings(prev => [...prev, newBooking]);
       return newBooking;
     } catch (err) {
@@ -250,6 +292,9 @@ export function useSupabaseData() {
     try {
       const dbUpdates: any = {};
       if (updates.status) dbUpdates.status = updates.status.toLowerCase().replace(' ', '_');
+      if (updates.checkInDate) dbUpdates.check_in_date = updates.checkInDate;
+      if (updates.checkOutDate) dbUpdates.check_out_date = updates.checkOutDate;
+      if (updates.numberOfGuests) dbUpdates.number_of_guests = updates.numberOfGuests;
 
       const { data, error } = await supabase
         .from('bookings')
@@ -260,11 +305,11 @@ export function useSupabaseData() {
 
       if (error) throw error;
       
+      const updatedBooking = transformBooking(data, rooms, guests);
       setBookings(prev => prev.map(booking => 
-        booking.id === bookingId 
-          ? { ...booking, ...updates }
-          : booking
+        booking.id === bookingId ? updatedBooking : booking
       ));
+      return updatedBooking;
     } catch (err) {
       console.error('Error updating booking:', err);
       throw err;
@@ -286,6 +331,7 @@ export function useSupabaseData() {
     updateRoom,
     deleteRoom,
     addGuest,
+    updateGuest,
     addBooking,
     updateBooking
   };
