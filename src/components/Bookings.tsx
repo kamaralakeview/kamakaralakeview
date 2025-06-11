@@ -34,6 +34,12 @@ export function Bookings() {
     setSubmitting(true);
     
     try {
+      // Validate form data
+      if (!formData.fullName || !formData.phone || !formData.checkInDate || !formData.checkOutDate) {
+        alert('Please fill in all required fields.');
+        return;
+      }
+
       // Find available room of the requested type
       const availableRoom = rooms.find(room => 
         room.type === formData.roomType && room.status === 'Available'
@@ -55,7 +61,7 @@ export function Bookings() {
       }
       
       // Create booking
-      await addBooking({
+      const newBooking = await addBooking({
         guestId: guest.id,
         guest,
         roomId: availableRoom.id,
@@ -84,7 +90,7 @@ export function Bookings() {
       alert('Booking created successfully!');
     } catch (err) {
       console.error('Error creating booking:', err);
-      alert('Error creating booking. Please try again.');
+      alert(`Error creating booking: ${err instanceof Error ? err.message : 'Please try again.'}`);
     } finally {
       setSubmitting(false);
     }
@@ -120,6 +126,12 @@ export function Bookings() {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <p className="text-red-800">Error loading bookings: {error}</p>
+        <button 
+          onClick={() => window.location.reload()} 
+          className="mt-2 bg-red-600 text-white px-4 py-2 rounded"
+        >
+          Retry
+        </button>
       </div>
     );
   }

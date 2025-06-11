@@ -9,7 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Database types based on our schema
+// Database types based on the actual schema
 export interface DatabaseRoom {
   id: number;
   room_number: string;
@@ -21,25 +21,30 @@ export interface DatabaseRoom {
 
 export interface DatabaseGuest {
   id: number;
-  first_name: string | null;
-  last_name: string | null;
+  first_name: string;
+  last_name: string;
   email: string | null;
-  phone_number: string | null;
-  id_type: string | null;
-  id_number: string | null;
-  nationality: string | null;
+  phone: string | null;
   created_at: string;
 }
 
 export interface DatabaseBooking {
   id: number;
-  guest_name: string | null;
-  guest_email: string | null;
-  guest_phone: string | null;
+  guest_id: number | null;
   room_id: number | null;
-  check_in_date: string | null;
-  check_out_date: string | null;
-  number_of_guests: number | null;
+  staff_id: number | null;
+  check_in_date: string;
+  check_out_date: string;
+  status: string | null;
+  created_at: string;
+}
+
+export interface DatabaseStaff {
+  id: number;
+  full_name: string;
+  role: string;
+  email: string | null;
+  phone: string | null;
   status: string | null;
   created_at: string;
 }
@@ -47,29 +52,15 @@ export interface DatabaseBooking {
 export interface DatabaseCheckin {
   id: number;
   booking_id: number | null;
-  check_in_time: string | null;
+  checkin_time: string | null;
   staff_id: number | null;
-  notes: string | null;
   created_at: string;
 }
 
 export interface DatabaseCheckout {
   id: number;
-  booking_id: number;
-  check_out_time: string | null;
-  staff_id: number | null;
-  notes: string | null;
-  created_at: string;
-}
-
-export interface DatabaseStaff {
-  id: number;
-  name: string | null;
-  email: string | null;
-  phone: string | null;
-  role: string | null;
-  status: string | null;
-  last_login: string | null;
+  booking_id: number | null;
+  checkout_time: string | null;
   staff_id: number | null;
   created_at: string;
 }

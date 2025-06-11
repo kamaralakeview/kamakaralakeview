@@ -16,12 +16,9 @@ const transformRoom = (dbRoom: DatabaseRoom): Room => ({
 
 const transformGuest = (dbGuest: DatabaseGuest): Guest => ({
   id: dbGuest.id.toString(),
-  fullName: `${dbGuest.first_name || ''} ${dbGuest.last_name || ''}`.trim(),
-  phone: dbGuest.phone_number || '',
-  email: dbGuest.email || undefined,
-  nationality: dbGuest.nationality || undefined,
-  idType: dbGuest.id_type || undefined,
-  idNumber: dbGuest.id_number || undefined
+  fullName: `${dbGuest.first_name} ${dbGuest.last_name}`.trim(),
+  phone: dbGuest.phone || '',
+  email: dbGuest.email || undefined
 });
 
 const transformBooking = (dbBooking: DatabaseBooking, rooms: Room[], guests: Guest[]): Booking => {
@@ -33,11 +30,11 @@ const transformBooking = (dbBooking: DatabaseBooking, rooms: Room[], guests: Gue
     price: 120
   };
 
-  const guest = guests.find(g => g.fullName === dbBooking.guest_name) || {
-    id: '0',
-    fullName: dbBooking.guest_name || 'Unknown Guest',
-    phone: dbBooking.guest_phone || '',
-    email: dbBooking.guest_email || undefined
+  const guest = guests.find(g => g.id === dbBooking.guest_id?.toString()) || {
+    id: dbBooking.guest_id?.toString() || '0',
+    fullName: 'Unknown Guest',
+    phone: '',
+    email: undefined
   };
 
   return {
@@ -46,10 +43,11 @@ const transformBooking = (dbBooking: DatabaseBooking, rooms: Room[], guests: Gue
     guest,
     roomId: room.id,
     room,
-    checkInDate: dbBooking.check_in_date || '',
-    checkOutDate: dbBooking.check_out_date || '',
-    numberOfGuests: dbBooking.number_of_guests || 1,
-    status: dbBooking.status === 'booked' ? 'Confirmed' :
+    checkInDate: dbBooking.check_in_date,
+    checkOutDate: dbBooking.check_out_date,
+    numberOfGuests: 1, // Default since it's not in the schema
+    status: dbBooking.status === 'pending' ? 'Confirmed' :
+            dbBooking.status === 'confirmed' ? 'Confirmed' :
             dbBooking.status === 'checked_in' ? 'Checked In' :
             dbBooking.status === 'checked_out' ? 'Checked Out' : 'Cancelled',
     createdAt: dbBooking.created_at
@@ -75,7 +73,10 @@ export function useSupabaseData() {
         .select('*')
         .order('room_number');
 
-      if (roomsError) throw roomsError;
+      if (roomsError) {
+        console.error('Rooms error:', roomsError);
+        throw roomsError;
+      }
 
       // Fetch guests
       const { data: guestsData, error: guestsError } = await supabase
@@ -83,7 +84,10 @@ export function useSupabaseData() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (guestsError) throw guestsError;
+      if (guestsError) {
+        console.error('Guests error:', guestsError);
+        throw guestsError;
+      }
 
       // Fetch bookings
       const { data: bookingsData, error: bookingsError } = await supabase
@@ -91,7 +95,10 @@ export function useSupabaseData() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (bookingsError) throw bookingsError;
+      if (bookingsError) {
+        console.error('Bookings error:', bookingsError);
+        throw bookingsError;
+      }
 
       // Transform data
       const transformedRooms = roomsData?.map(transformRoom) || [];
@@ -187,7 +194,7 @@ export function useSupabaseData() {
       const { data: existingGuest, error: checkError } = await supabase
         .from('guests')
         .select('*')
-        .eq('phone_number', guestData.phone)
+        .eq('phone', guestData.phone)
         .single();
 
       if (checkError && checkError.code !== 'PGRST116') {
@@ -200,18 +207,15 @@ export function useSupabaseData() {
       }
 
       const [firstName, ...lastNameParts] = guestData.fullName.split(' ');
-      const lastName = lastNameParts.join(' ');
+      const lastName = lastNameParts.join(' ') || firstName;
 
       const { data, error } = await supabase
         .from('guests')
         .insert({
           first_name: firstName,
-          last_name: lastName || null,
+          last_name: lastName,
           email: guestData.email || null,
-          phone_number: guestData.phone,
-          nationality: guestData.nationality || null,
-          id_type: guestData.idType || null,
-          id_number: guestData.idNumber || null
+          phone: guestData.phone
         })
         .select()
         .single();
@@ -233,13 +237,10 @@ export function useSupabaseData() {
       if (updates.fullName) {
         const [firstName, ...lastNameParts] = updates.fullName.split(' ');
         dbUpdates.first_name = firstName;
-        dbUpdates.last_name = lastNameParts.join(' ') || null;
+        dbUpdates.last_name = lastNameParts.join(' ') || firstName;
       }
       if (updates.email !== undefined) dbUpdates.email = updates.email;
-      if (updates.phone) dbUpdates.phone_number = updates.phone;
-      if (updates.nationality !== undefined) dbUpdates.nationality = updates.nationality;
-      if (updates.idType !== undefined) dbUpdates.id_type = updates.idType;
-      if (updates.idNumber !== undefined) dbUpdates.id_number = updates.idNumber;
+      if (updates.phone) dbUpdates.phone = updates.phone;
 
       const { data, error } = await supabase
         .from('guests')
@@ -265,13 +266,10 @@ export function useSupabaseData() {
       const { data, error } = await supabase
         .from('bookings')
         .insert({
-          guest_name: bookingData.guest.fullName,
-          guest_email: bookingData.guest.email || null,
-          guest_phone: bookingData.guest.phone,
+          guest_id: parseInt(bookingData.guestId),
           room_id: parseInt(bookingData.roomId),
           check_in_date: bookingData.checkInDate,
           check_out_date: bookingData.checkOutDate,
-          number_of_guests: bookingData.numberOfGuests,
           status: bookingData.status.toLowerCase().replace(' ', '_')
         })
         .select()
@@ -294,7 +292,6 @@ export function useSupabaseData() {
       if (updates.status) dbUpdates.status = updates.status.toLowerCase().replace(' ', '_');
       if (updates.checkInDate) dbUpdates.check_in_date = updates.checkInDate;
       if (updates.checkOutDate) dbUpdates.check_out_date = updates.checkOutDate;
-      if (updates.numberOfGuests) dbUpdates.number_of_guests = updates.numberOfGuests;
 
       const { data, error } = await supabase
         .from('bookings')
